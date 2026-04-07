@@ -408,7 +408,6 @@ class RepeatAlways(py_trees.decorators.Decorator):
 
 # ─── Lab03 Implementations ─────────────────────────────────────────────────────────────
 
-# TODO
 def build_tree(robot: RobotInterface) -> py_trees.behaviour.Behaviour:  # noqa: ARG001
     """
     Task: Complete build_tree() so that the robot executes the following loop:
@@ -490,10 +489,26 @@ class SelectObject(py_trees.behaviour.Behaviour):
         super().__init__('SelectObject')
         self.robot = robot
         self.bb = py_trees.blackboard.Client(name='SelectObject')
-        # TODO: register the blackboard keys you need
+        
+        # register keys
+        self.bb.register_key('/container', access=py_trees.common.Access.READ)
+        self.bb.register_key('/detected_objects', access=py_trees.common.Access.READ)
+        self.bb.register_key('/target_object_id', access=py_trees.common.Access.WRITE)
 
     def update(self):
-        raise NotImplementedError
+        container = self.bb.container
+        objects = self.bb.detected_objects
+        for obj_id, obj in objects.items():
+            cx, cy = self.bb.container['center_xy']
+            hx, hy = self.bb.container['width'] / 2.0, self.bb.container['depth'] / 2.0
+            if abs(obj.pose.position.x - cx) > hx or abs(obj.pose.position.y - cy) > hy: # outside container
+                self.bb.target_object_id = obj_id
+                self.robot.log(f'[INFO] SelectObject: selected {obj_id}')
+
+                return py_trees.common.Status.SUCCESS
+        
+        self.robot.log('[FAIL] SelectObject: no unplaced objects found')
+        return py_trees.common.Status.FAILURE
 
 class ProposeGrasps(py_trees.behaviour.Behaviour):
     """
