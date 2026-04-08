@@ -524,14 +524,57 @@ class ProposeGrasps(py_trees.behaviour.Behaviour):
     def __init__(self, robot: RobotInterface):
         super().__init__('ProposeGrasps')
         self.robot = robot
+        self.retries = 0
         self.bb = py_trees.blackboard.Client(name='ProposeGrasps')
-        # TODO: register the blackboard keys you need
-
+        
+        # register keys 
+        self.bb.register_key('/target_object_id', access=py_trees.common.Access.READ)
+        self.bb.register_key('/detected_objects', access=py_trees.common.Access.READ)
+        self.bb.register_key('/grasp_proposals', access=py_trees.common.Access.WRITE)
+        
     def initialise(self):
-        raise NotImplementedError
+        self.retries = 0
 
+    # TODO
     def update(self):
-        raise NotImplementedError
+        obj = self.bb.detected_objects[self.bb.target_object_id]
+        sample = sample_cuboid_surface(
+            center=(
+                obj.pose.position.x, 
+                obj.pose.position.y, 
+                obj.pose.position.z),
+            dims=obj.dims,
+            n_points=500,
+            orientation=(
+                obj.pose.orientation.x,
+                obj.pose.orientation.y,
+                obj.pose.orientation.z,
+                obj.pose.orientation.w
+            )
+        )
+        self.robot.publish_cloud(sample)
+        grasps = detect_grasps(sample)
+
+        candidates = []
+        
+        for grasp in grasps:
+            if grasp.R[2, 0] < -0.5:
+                candidate = gpd_to_panda_pose(grasp.pos, grasp.R)
+                candidates.append(candidate)
+
+        if not candidates:
+            if self.retries == self._MAX_RETRIES:
+                self.robot.log('[FAIL] ProposeGrasps: no valid candidates after retries')
+                return py_trees.common.Status.FAILURE
+            else:
+                self.retries += 1
+                self.robot.log(f'[WARN] ProposeGrasps: retrying ({self.retries}/{self._MAX_RETRIES})')
+                return py_trees.common.Status.RUNNING
+                
+        self.bb.grasp_proposals = candidates 
+        self.robot.log(f'[INFO] ProposeGrasps: {len(candidates)} valid candidates')
+        return py_trees.common.Status.SUCCESS
+    
 
 class ProposeDropPose(py_trees.behaviour.Behaviour):
     """
