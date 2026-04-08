@@ -535,7 +535,6 @@ class ProposeGrasps(py_trees.behaviour.Behaviour):
     def initialise(self):
         self.retries = 0
 
-    # TODO
     def update(self):
         obj = self.bb.detected_objects[self.bb.target_object_id]
         sample = sample_cuboid_surface(
@@ -588,11 +587,23 @@ class ProposeDropPose(py_trees.behaviour.Behaviour):
         super().__init__('ProposeDropPose')
         self.robot = robot
         self.bb = py_trees.blackboard.Client(name='ProposeDropPose')
-        # TODO: register the blackboard keys you need
+        # register keys
+        self.bb.register_key('/container', access=py_trees.common.Access.READ)
+        self.bb.register_key('/drop_pose', access=py_trees.common.Access.WRITE)
 
     def update(self):
-        raise NotImplementedError
+        pose = Pose()
+        container = self.bb.container
 
+        pose.position.x = container['center_xy'][0]
+        pose.position.y = container['center_xy'][1]
+        pose.position.z = container['table_z'] + container['height'] + 0.1
+
+        pose.orientation = RobotInterface.TOP_DOWN_ORIENTATION
+
+        self.bb.drop_pose=pose
+        self.robot.log(f'[INFO] ProposeDropPose: drop at ({pose.position.x:.3f}, {pose.position.y:.3f}, {pose.position.z:.3f})')
+        return py_trees.common.Status.SUCCESS
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
